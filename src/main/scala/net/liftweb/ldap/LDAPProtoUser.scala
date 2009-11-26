@@ -79,7 +79,8 @@ trait MetaLDAPProtoUser[ModelType <: LDAPProtoUser[ModelType]] extends MetaMegaP
                 if (ldapVendor.bindUser(userDn,
                                         S.param("password").openOr(""))) {
                     logUserIn(this)
-                    setRolesFunction(userDn, ldapVendor)
+                    setRolesFunction(userDn + "," + ldapVendor.parameters().get("ldap.base").getOrElse(""),
+                                     ldapVendor)
                 }
                 else {
                     S.error("Unable to login with : " + S.param("username").openOr(""))
