@@ -10,9 +10,22 @@ import javax.naming.ldap.{LdapName, InitialLdapContext}
 import scala.collection.jcl.{Hashtable => ScalaHashtable, MapWrapper}
 import scala.util.logging.{Logged, ConsoleLogger}
 
-trait SimpleLDAPVendor extends LDAPVendor {
-}
-
+/**
+ * Extends SimpleLDAPVendor trait,
+ * Allow us to search and bind an username from a ldap server
+ * To set the ldap server parameters override the parameters var directly:
+ *    SimpleLDAPVendor.parameters = () => Map("ldap.username" -> ...
+ * or set the parameters from a properties file or a inputStream
+ *    SimpleLDAPVendor.parameters = () => SimpleLDAPVendor.parametersFromFile("/opt/config/ldap.properties")
+ *    SimpleLDAPVendor.parameters = () => SimpleLDAPVendor.parametersFromStream(
+                this.getClass().getClassLoader().getResourceAsStream("ldap.properties"))
+ *
+ * The mandatory parameters are :
+ *  ldap.url -> LDAP Server url : ldap://localhost
+ *  ldap.base -> Base DN from the LDAP Server : dc=company, dc=com
+ *  ldap.userName -> LDAP user dn to perform search operations
+ *  ldap.password -> LDAP user password
+ */
 object SimpleLDAPVendor extends SimpleLDAPVendor with ConsoleLogger {
     def parametersFromFile(filename: String) : StringMap = {
         return parametersFromStream(new FileInputStream(filename))
@@ -22,7 +35,6 @@ object SimpleLDAPVendor extends SimpleLDAPVendor with ConsoleLogger {
         val p = new Properties()
         p.load(stream)
 
-        // automatically calls convert(javaMap: Hashtable[String, String])
         return convertToStringMap(p.asInstanceOf[Hashtable[String, String]])
     }
 
@@ -33,6 +45,8 @@ object SimpleLDAPVendor extends SimpleLDAPVendor with ConsoleLogger {
     }
 }
 
+trait SimpleLDAPVendor extends LDAPVendor
+
 class LDAPVendor extends Logged {
 
     type StringMap = Map[String, String]
@@ -41,6 +55,7 @@ class LDAPVendor extends Logged {
     val DEFAULT_BASE_DN = ""
     val DEFAULT_USER = ""
     val DEFAULT_PASSWORD = ""
+    val DEFAULT_INITIAL_CONTEXT_FACTORY = "com.sun.jndi.ldap.LdapCtxFactory"
 
     var parameters: () => StringMap = () => null
 
@@ -73,15 +88,9 @@ class LDAPVendor extends Logged {
         var result = false
 
         try {
-            var env = new Hashtable[String, String]()
-            env.put(Context.PROVIDER_URL, parameters().getOrElse("ldap.url", DEFAULT_URL))
-            env.put(Context.SECURITY_AUTHENTICATION, "simple")
-            env.put(Context.SECURITY_PRINCIPAL, dn + "," + parameters().getOrElse("ldap.base", DEFAULT_BASE_DN))
-            env.put(Context.SECURITY_CREDENTIALS, password)
-            env.put(Context.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.ldap.LdapCtxFactory")
-
-            var ctx = Some(new InitialLdapContext(env, null))
-
+            val username = dn + "," + parameters().getOrElse("ldap.base", DEFAULT_BASE_DN)
+            var ctx = getInitialContext(parameters() ++ Map("ldap.userName" -> username,
+                                                            "ldap.password" -> password))
             result = !ctx.isEmpty
             ctx.get.close
         }
@@ -113,8 +122,8 @@ class LDAPVendor extends Logged {
         env.put(Context.SECURITY_AUTHENTICATION, "simple")
         env.put(Context.SECURITY_PRINCIPAL, props.getOrElse("ldap.userName", DEFAULT_USER))
         env.put(Context.SECURITY_CREDENTIALS, props.getOrElse("ldap.password", DEFAULT_PASSWORD))
-        env.put(Context.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.ldap.LdapCtxFactory")
-
+        env.put(Context.INITIAL_CONTEXT_FACTORY, parameters().getOrElse("ldap.initial_context_factory",
+                                                                        DEFAULT_INITIAL_CONTEXT_FACTORY))
         return Some(new InitialLdapContext(env, null))
     }
 }
