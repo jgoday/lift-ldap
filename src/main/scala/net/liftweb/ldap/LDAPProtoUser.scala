@@ -83,30 +83,32 @@ trait MetaLDAPProtoUser[ModelType <: LDAPProtoUser[ModelType]] extends MetaMegaP
 
     override def login : NodeSeq = {
         if (S.post_?) {
-            val users = ldapVendor.search(ldapUserSearch.format(S.param("username").openOr("")))
-
-            if (users.size >= 1) {
-                val userDn = users(0)
-                if (ldapVendor.bindUser(userDn,
-                                        S.param("password").openOr(""))) {
-                    logUserIn(this)
-                    setRoles(userDn + "," + ldapVendor.parameters().get("ldap.base").getOrElse(""), ldapVendor)
-
-                    return NodeSeq.Empty
-                }
-                else {
-                    S.error(loginErrorMessage.format(S.param("username").openOr("")))
-                }
-            }
-            else {
+            if (!ldapLogin(S.param("username").openOr(""),
+                           S.param("password").openOr("")))
                 S.error(loginErrorMessage.format(S.param("username").openOr("")))
-            }
         }
 
         Helpers.bind("user", loginXhtml,
                     "name" -> (JsCmds.FocusOnLoad(<input type="text" name="username"/>)),
                     "password" -> (JsCmds.FocusOnLoad(<input type="password" name="password"/>)),
                     "submit" -> (<input type="submit" value={S.??("log.in")}/>))
+    }
+
+    def ldapLogin(username: String, password: String): Boolean = {
+        val users = ldapVendor.search(ldapUserSearch.format(username))
+
+        if (users.size >= 1) {
+            val userDn = users(0)
+            if (ldapVendor.bindUser(userDn, password)) {
+                logUserIn(this)
+                S.redirectTo(homePage)
+                setRoles(userDn + "," + ldapVendor.parameters().get("ldap.base").getOrElse(""), ldapVendor)
+            }
+            else return false
+        }
+        else return false
+
+        return true
     }
 }
 
